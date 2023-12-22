@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1076642706314",
+    "project_id": "bachhoa-83d21",
+    "storage_bucket": "bachhoa-83d21.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1076642706314:android:ec3bdea2450c576d110e73",
+        "android_client_info": {
+          "package_name": "com.bachhoa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3GKko-jUxhGU8JzZZV0Gzfhw3uAoDYNQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
