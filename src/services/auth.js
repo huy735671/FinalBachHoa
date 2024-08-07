@@ -7,6 +7,7 @@ const signUp = async (name, phone, email, password, address, role) => {
       throw new Error("Please enter all required data");
     }
 
+    // Tạo tài khoản người dùng mới
     const userCredential = await auth().createUserWithEmailAndPassword(
       email.trim(),
       password
@@ -14,17 +15,19 @@ const signUp = async (name, phone, email, password, address, role) => {
 
     const user = userCredential.user;
 
+    // Cập nhật thông tin hồ sơ người dùng
     await user.updateProfile({
       displayName: name,
     });
 
-    await firestore().collection('USERS').doc(user.uid).set({
-      name,
-      phone,
-      email,
-      password, 
-      address,
-      role,
+    // Lưu thông tin người dùng vào Firestore với email làm ID
+    await firestore().collection('USERS').doc(email.trim().toLowerCase()).set({
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email.trim().toLowerCase(),
+      password: password, // Đảm bảo rằng bạn hiểu các vấn đề bảo mật liên quan
+      address: address.trim(),
+      role: role.trim(),
     });
 
     return user.uid;

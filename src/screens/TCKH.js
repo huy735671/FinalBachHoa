@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Image, FlatList, StyleSheet } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
-import { IconButton } from 'react-native-paper';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CartScreen from './Cart';
 import Customer from './Customer';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useCart } from '../context';
+import auth from '@react-native-firebase/auth';
 
 const Tab = createBottomTabNavigator();
 
@@ -17,8 +17,6 @@ const HomeScreen = () => {
   const { addToCart } = useCart();
   const navigation = useNavigation();
   const [cart, setCart] = useState([]);
-  const [showCart, setShowCart] = useState(false);
-  const { params } = useRoute();
 
   useEffect(() => {
     const unsubscribe = firestore()
@@ -35,17 +33,16 @@ const HomeScreen = () => {
           const imagePath = serviceData.imageName;
 
           if (imagePath) {
-            // Tải hình ảnh từ Firebase Storage
             try {
               const url = await storage().ref('images').child(imagePath);
               const downloadURL = await url.getDownloadURL();
-              serviceData.imageName = downloadURL; // Thêm đường dẫn hình ảnh vào dữ liệu service
+              serviceData.imageName = downloadURL;
             } catch (error) {
               console.error('Error downloading image:', error);
-              serviceData.imageName = null; // Nếu có lỗi, đặt imageName thành null
+              serviceData.imageName = null;
             }
           } else {
-            serviceData.imageName = null; // Đặt imageName thành null nếu không có
+            serviceData.imageName = null;
           }
 
           data.push(serviceData);
@@ -56,12 +53,43 @@ const HomeScreen = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleAddToCart = (item) => {
-    if (cart.findIndex((cartItem) => cartItem.id === item.id) !== -1) return null;
-    const updatedCart = [...cart, { ...item, amount: 1 }];
-    setCart(updatedCart);
-    addToCart(item);
+  const handleAddToCart = async (item) => {
+    try {
+      // Kiểm tra nếu sản phẩm đã có trong giỏ hàng
+      if (cart.findIndex((cartItem) => cartItem.id === item.id) !== -1) return;
+  
+      // Thêm sản phẩm vào giỏ hàng cục bộ
+      const updatedCart = [...cart, { ...item, amount: 1 }];
+      setCart(updatedCart);
+      addToCart(item);
+  
+      // Lấy thông tin người dùng hiện tại
+      const user = auth().currentUser;
+      if (!user) {
+        console.error('User not logged in');
+        return;
+      }
+      const userId = user.uid;
+  
+      // Thêm sản phẩm vào Firestore
+      await firestore()
+        .collection('Cart')
+        .add({
+          userId: userId,
+          productId: item.id,
+          productName: item.serviceName,
+          productPrice: item.price,
+          productImage: item.imageName,
+          amount: 1, // Bạn có thể thay đổi giá trị này nếu cần
+          createdAt: firestore.FieldValue.serverTimestamp(),
+        });
+  
+      console.log('Product added to cart successfully!');
+    } catch (error) {
+      console.error('Error adding product to cart:', error);
+    }
   };
+  
 
   const formatData = (data, numColumns) => {
     const numberOfFullRows = Math.floor(data.length / numColumns);
@@ -75,33 +103,28 @@ const HomeScreen = () => {
 
   const renderServiceItem = ({ item }) => (
     <View style={styles.serviceItemContainer}>
-      <View style={styles.imageContainer}>
+      <TouchableOpacity
+        style={styles.imageContainer}
+        onPress={() => navigation.navigate('product', { serviceId: item.id })}
+      >
         {item.imageName ? (
           <Image source={{ uri: item.imageName }} style={styles.serviceImage} />
         ) : (
           <View style={styles.placeholderImage} />
         )}
-      </View>
+      </TouchableOpacity>
       <View style={styles.serviceInfo}>
-        <Text style={styles.serviceName}>Tên: {item.serviceName}</Text>
-        <Text style={styles.servicePrice}>Giá: {item.price} VND</Text>
+        <Text style={styles.serviceName} numberOfLines={1} ellipsizeMode='tail'>
+          {item.serviceName}
+        </Text>
+        <Text style={styles.servicePrice}>{item.price} VND</Text>
       </View>
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('product', { serviceId: item.id })}
-        >
-          <View style={styles.viewButton}>
-            <IconButton
-              icon="cart-outline"
-              color="white"
-              size={20}
-              onPress={() => handleAddToCart(item)}
-            />
-            <Text style={styles.buttonText}>Xem</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={styles.cartButton}
+        onPress={() => handleAddToCart(item)}
+      >
+        <Ionicons name="cart-outline" size={24} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 
@@ -122,7 +145,7 @@ const HomeScreen = () => {
           ].map((item, index) => (
             <TouchableOpacity key={index} style={styles.categoryButton}>
               <Image source={{ uri: item.uri }} style={styles.categoryImage} />
-              <Text>{item.label}</Text>
+              <Text style={styles.categoryLabel}>{item.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -160,7 +183,7 @@ const HomeScreen = () => {
         {() => <HomeScreenContent services={services} renderServiceItem={renderServiceItem} />}
       </Tab.Screen>
       <Tab.Screen name='Cart' options={{ headerShown: false }}>
-        {() => <CartScreen services={services} renderServiceItem={renderServiceItem} />}
+        {() => <CartScreen />}
       </Tab.Screen>
       <Tab.Screen name="User" component={Customer} options={{ headerShown: false }} />
     </Tab.Navigator>
@@ -171,8 +194,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   bannerContainer: {
     backgroundColor: '#3598db',
@@ -194,13 +215,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   categoryButton: {
-    padding: 15,
+    padding: 10,
     alignContent: 'center',
     alignItems: 'center',
+    margin: 5,
   },
   categoryImage: {
     height: 50,
     width: 50,
+  },
+  categoryLabel: {
+    marginTop: 5,
+    fontSize: 12,
   },
   overlay: {
     flex: 5,
@@ -214,67 +240,63 @@ const styles = StyleSheet.create({
   serviceItemContainer: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 10,
+    padding: 15,
     margin: 10,
+    borderColor: '#ddd',
+    backgroundColor: '#f9f9f9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
   imageContainer: {
-    width: 150,
-    height: 150,
+    width: 180,
+    height: 180,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 10,
+    borderRadius: 15,
+    overflow: 'hidden',
+    backgroundColor: '#f9f9f9',
   },
   serviceImage: {
-    width: 150,
-    height: 150,
-    borderRadius: 10,
+    width: '100%',
+    height: '100%',
   },
   placeholderImage: {
-    width: 150,
-    height: 150,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#C0C0C0',
-    borderRadius: 10,
   },
   serviceInfo: {
     alignItems: 'center',
     marginBottom: 10,
+    width: '100%',
+    paddingHorizontal: 10,
   },
   serviceName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: 'black',
+    marginBottom: 5,
+    textAlign: 'center',
+    width: '100%',
+    overflow: 'hidden', // Giúp đảm bảo văn bản không tràn ra ngoài
   },
   servicePrice: {
     fontSize: 16,
-    color: 'red',
-  },
-  buttonContainer: {
-    alignItems: 'center',
-  },
-  addButton: {
-    backgroundColor: '#2ecc71',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  viewButton: {
-    backgroundColor: '#2ecc71',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
+    color: '#FF6F61',
     fontWeight: 'bold',
-    fontSize: 18,
-    marginLeft: 8,
+  },
+  cartButton: {
+    backgroundColor: '#65b31d',
+    borderRadius: 25,
+    padding: 12,
+    marginTop: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

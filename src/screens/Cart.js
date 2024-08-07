@@ -1,84 +1,129 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Image } from 'react-native';
-import { useMyContextController } from '../context';
-import {Button} from "react-native-paper";
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
+import { Button } from "react-native-paper";
 import { useNavigation } from '@react-navigation/native';
-import storage from "@react-native-firebase/firestore";
-const CartScreen = ({route}) => {
-  const [controller, dispatch] = useMyContextController();
-  const { cart } = controller;
 
+const CartScreen = ({ route }) => {
+  const [cart, setCart] = useState([]);
+  const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
+
+  // Định dạng số tiền với dấu phân cách hàng nghìn
+  const formatCurrency = (amount) => {
+    if (isNaN(amount)) return '0 VND';
+    return amount
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' VND';
+  };
+
   // Tính tổng số tiền từ giỏ hàng
-  const totalAmount = cart.reduce((total, item) => total + parseFloat(item.price), 0);
+  const totalAmount = cart.reduce((total, item) => {
+    const price = parseFloat(item.price) || 0; // Chuyển đổi giá trị thành số hoặc 0 nếu không hợp lệ
+    console.log('Item price:', price); // Debugging
+    return total + price;
+  }, 0);
 
-  useEffect(()=>{
+  // Định dạng tổng số tiền
+  const formattedTotalAmount = formatCurrency(totalAmount);
 
-  })
+  // Hàm để lấy dữ liệu giỏ hàng từ Firestore
+  const fetchCartData = () => {
+    const user = auth().currentUser;
+    if (!user) {
+      console.error('User not logged in');
+      return;
+    }
+
+    const userId = user.uid;
+
+    return firestore()
+      .collection('Cart')
+      .where('userId', '==', userId)
+      .onSnapshot((snapshot) => {
+        const cartData = snapshot.docs.map(doc => doc.data());
+        console.log('Cart data:', cartData); // Debugging
+        setCart(cartData);
+        setLoading(false);
+      }, (error) => {
+        console.error('Error fetching cart data:', error);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    const unsubscribe = fetchCartData();
+    return () => unsubscribe(); // Cleanup the listener on component unmount
+  }, []);
 
   const renderCartItem = ({ item }) => (
     <View style={styles.cartItem}>
-      {item.imageUrl ? (
-        <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-      ) : (
-        <View style={styles.placeholderImage} />
-      )}
+      <Image 
+        source={item.productImage ? { uri: item.productImage } : require('../Image/iconCart.png')} 
+        style={styles.itemImage} 
+      />
       <View style={styles.itemDetails}>
-        <Text style={styles.itemName}>{item.serviceName}</Text>
-        <Text style={styles.itemPrice}>{item.price} VND</Text>
+        <Text style={styles.itemName}>{item.productName}</Text>
+        <Text style={styles.itemPrice}>{formatCurrency(item.productPrice)}</Text>
       </View>
       <View style={styles.quantityButtonContainer}>
         <TouchableOpacity
-          style={styles.quantityButton}
-          onPress={() => handleIncreaseQuantity(item.id)}
+          style={styles.quantityButton} 
+          onPress={() => handleIncreaseQuantity(item.productId)}
         >
           <Text style={styles.quantityButtonText}>+</Text>
         </TouchableOpacity>
       </View>
       <TouchableOpacity
         style={styles.removeButton}
-        onPress={() => handleRemoveFromCart(item.id)}
+        onPress={() => handleRemoveFromCart(item.productId)}
       >
         <Text style={styles.removeButtonText}>Xóa</Text>
       </TouchableOpacity>
     </View>
   );
-  
-  
 
   const handleRemoveFromCart = (itemId) => {
-    // Cập nhật giỏ hàng: gọi hàm dispatch với action REMOVE_FROM_CART
-    dispatch({ type: 'REMOVE_FROM_CART', value: itemId });
+    console.log('Removing item with id:', itemId); // Debugging
+    // Xử lý xóa sản phẩm
   };
 
   const handleIncreaseQuantity = (itemId) => {
-    // Cập nhật giỏ hàng: gọi hàm dispatch với action INCREASE_QUANTITY
-    dispatch({ type: 'INCREASE_QUANTITY', value: itemId });
+    // Xử lý tăng số lượng sản phẩm
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Giỏ Hàng</Text>
-      {cart.length === 0 ? (
-        <Text style={styles.emptyCartText}>Giỏ hàng trống</Text>
-      ) : (
-        <FlatList
-          data={cart}
-          keyExtractor={(item) => item.id}
-          renderItem={renderCartItem}
-        />
-      )}
+      <View style={styles.header}>
+        <Text style={styles.title}>Giỏ Hàng</Text>
+      </View>
+      <View style={styles.content}>
+        {loading ? (
+          <Text style={styles.emptyCartText}>Đang tải...</Text>
+        ) : cart.length === 0 ? (
+          <Text style={styles.emptyCartText}>Giỏ hàng trống</Text>
+        ) : (
+          <FlatList
+            data={cart}
+            keyExtractor={(item) => item.productId}
+            renderItem={renderCartItem}
+          />
+        )}
+      </View>
       <View style={styles.summaryContainer}>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Tổng cộng:</Text>
-          <Text style={styles.summaryValue}>{totalAmount} VND</Text>
+          <Text style={styles.summaryValue}>{formattedTotalAmount}</Text>
         </View>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Số lượng sản phẩm:</Text>
           <Text style={styles.summaryValue}>{cart.length}</Text>
         </View>
-        <TouchableOpacity style={styles.checkoutButton}>
-         <Button onPress={()=>navigation.navigate("HoaDon")}><Text style={styles.checkoutButtonText}>Thanh Toán</Text></Button> 
+        <TouchableOpacity style={styles.checkoutButton} onPress={() => navigation.navigate("HoaDon")}>
+          <Button onPress={() => navigation.navigate("HoaDon")}>
+            <Text style={styles.checkoutButtonText}>Thanh Toán</Text>
+          </Button>
         </TouchableOpacity>
       </View>
     </View>
@@ -88,14 +133,19 @@ const CartScreen = ({route}) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'white',
     padding: 20,
+    justifyContent: 'space-between',
+  },
+  header: {
+    marginBottom: 20,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
+  },
+  content: {
+    flex: 1,
   },
   cartItem: {
     flexDirection: 'row',
@@ -109,12 +159,6 @@ const styles = StyleSheet.create({
   itemImage: {
     width: 80,
     height: 80,
-    borderRadius: 5,
-  },
-  placeholderImage: {
-    width: 80,
-    height: 80,
-    backgroundColor: 'gray',
     borderRadius: 5,
   },
   itemDetails: {
@@ -157,20 +201,28 @@ const styles = StyleSheet.create({
   summaryContainer: {
     marginTop: 20,
     width: '100%',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
+    borderWidth: 5,
+    borderColor: '#ddd',
+    borderTopRightRadius: 20,
+    borderTopLeftRadius: 20,
   },
   summaryItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
-    width: '80%',
+    width: '100%',
   },
   summaryLabel: {
     fontSize: 16,
     fontWeight: 'bold',
+    textAlign: 'left',
+    flex: 1,
   },
   summaryValue: {
     fontSize: 16,
+    textAlign: 'left',
+    flex: 1,
   },
   checkoutButton: {
     backgroundColor: '#3598db',
@@ -178,6 +230,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     marginTop: 20,
+    alignSelf: 'flex-end',
   },
   checkoutButtonText: {
     color: 'white',

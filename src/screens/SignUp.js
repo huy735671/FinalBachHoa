@@ -13,20 +13,31 @@ const SignUp = ({ navigation }) => {
 
   const handleSignUp = async () => {
     try {
-      await Auth.signUp(name, phone, email, password, address, 'Customer');
-      console.log('User signed up successfully!');
-      
-      // Display success message
-      alert('Đăng ký thành công!');
+      // Đăng ký người dùng và lấy kết quả
+      const userUid = await Auth.signUp(name, phone, email, password, address, 'Customer');
+    
+      // Lưu thông tin người dùng vào Firestore với email làm ID
+      await firestore().collection('USERS').doc(email.trim().toLowerCase()).set({
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim().toLowerCase(),
+        password: password, // Lưu mật khẩu là không an toàn, hãy xem xét điều này
+        address: address.trim(),
+        role: 'Customer',
+      });
   
+      console.log('User signed up and data saved successfully!');
+      alert('Đăng ký thành công!');
+    
       // Navigate back to the login screen
       navigation.goBack();
     } catch (error) {
       console.error('Error signing up:', error.message);
-      // Handle the error, e.g., show an error message to the user.
       alert('Đăng ký thất bại: ' + error.message);
     }
   };
+  
+  
 
   return (
     <ImageBackground

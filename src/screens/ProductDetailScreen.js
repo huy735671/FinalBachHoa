@@ -12,10 +12,12 @@ import { useNavigation } from '@react-navigation/native';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import auth from '@react-native-firebase/auth'; // Import Firebase Auth
 
 const ProductDetail = ({ route }) => {
   const [service, setService] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
+  const [cart, setCart] = useState([]); // Thêm biến cart vào state
   const navigation = useNavigation();
   const { serviceId } = route.params;
 
@@ -50,20 +52,42 @@ const ProductDetail = ({ route }) => {
     fetchService();
   }, [serviceId]);
 
-  const handleAddToCart = async () => {
+  const handleAddToCart = async (item) => {
     try {
-      const collectionRef = firestore().collection('carts');
-      const documentData = {
-        imageName: service.imageName,
-        price: service.price,
-        serviceName: service.serviceName
-      };
-      await collectionRef.add(documentData);
-      console.log('Document added successfully!');
+      // Kiểm tra nếu sản phẩm đã có trong giỏ hàng
+      if (cart.findIndex((cartItem) => cartItem.id === item.id) !== -1) return;
+    
+      // Thêm sản phẩm vào giỏ hàng cục bộ
+      const updatedCart = [...cart, { ...item, amount: 1 }];
+      setCart(updatedCart);
+  
+      // Lấy thông tin người dùng hiện tại
+      const user = auth().currentUser;
+      if (!user) {
+        console.error('User not logged in');
+        return;
+      }
+      const userId = user.uid;
+    
+      // Thêm sản phẩm vào Firestore
+      await firestore()
+        .collection('Cart')
+        .add({
+          userId: userId,
+          productId: item.id,
+          productName: item.serviceName,
+          productPrice: item.price,
+          productImage: item.imageName,
+          amount: 1, // Bạn có thể thay đổi giá trị này nếu cần
+          createdAt: firestore.FieldValue.serverTimestamp(),
+        });
+    
+      console.log('Product added to cart successfully!');
     } catch (error) {
-      console.error('Error adding document: ', error);
+      console.error('Error adding product to cart:', error);
     }
   };
+  
 
   const handleGoBack = () => {
     navigation.goBack();
@@ -110,12 +134,13 @@ const ProductDetail = ({ route }) => {
           </View>
         </View>
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.button, styles.addToCartButton]}
-            onPress={handleAddToCart}
-          >
-            <Text style={styles.buttonText}>Thêm vào giỏ hàng</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+  style={[styles.button, styles.addToCartButton]}
+  onPress={() => handleAddToCart(service)} // Truyền service vào hàm
+>
+  <Text style={styles.buttonText}>Thêm vào giỏ hàng</Text>
+</TouchableOpacity>
+
         </View>
       </ImageBackground>
     </View>
@@ -243,7 +268,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
-
-
 
 export default ProductDetail;
